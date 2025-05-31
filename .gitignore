@@ -6,6 +6,7 @@
 *.so
 *.dylib
 *.spk
+*.DS_Store
 
 cmd/tailscale/tailscale
 cmd/tailscaled/tailscaled
