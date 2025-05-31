@@ -84,6 +84,7 @@ func (p *Node) View() NodeView {
 	return NodeView{ж: p}
 }
 
+// peer
 // NodeView provides a read-only view over Node.
 //
 // Its methods should only be called if `Valid()` returns true.
@@ -901,6 +902,8 @@ var _DERPRegionViewNeedsRegeneration = DERPRegion(struct {
 	Avoid           bool
 	NoMeasureNoHome bool
 	Nodes           []*DERPNode
+    IsCustomDERPRegion bool
+    IsConfigTailScaleDERPNodeAllSTUNOnly bool
 }{})
 
 // View returns a read-only view of DERPMap.
@@ -1036,6 +1039,7 @@ var _DERPNodeViewNeedsRegeneration = DERPNode(struct {
 	InsecureForTests bool
 	STUNTestIP       string
 	CanPort80        bool
+    IsCustomDERPNode bool
 }{})
 
 // View returns a read-only view of SSHRule.

@@ -424,6 +424,8 @@ var _DERPRegionCloneNeedsRegeneration = DERPRegion(struct {
 	Avoid           bool
 	NoMeasureNoHome bool
 	Nodes           []*DERPNode
+    IsCustomDERPRegion bool
+    IsConfigTailScaleDERPNodeAllSTUNOnly bool
 }{})
 
 // Clone makes a deep copy of DERPMap.
@@ -480,6 +482,7 @@ var _DERPNodeCloneNeedsRegeneration = DERPNode(struct {
 	InsecureForTests bool
 	STUNTestIP       string
 	CanPort80        bool
+    IsCustomDERPNode bool
 }{})
 
 // Clone makes a deep copy of SSHRule.

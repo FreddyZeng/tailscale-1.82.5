@@ -57,6 +57,7 @@ import (
 	"tailscale.com/util/systemd"
 	"tailscale.com/util/testenv"
 	"tailscale.com/util/zstdframe"
+    "tailscale.com/util/set"
 )
 
 // Direct is the client that connects to a tailcontrol server for a node.
@@ -103,6 +104,7 @@ type Direct struct {
 	endpoints    []tailcfg.Endpoint
 	tkaHead      string
 	lastPingURL  string // last PingRequest.URL received, for dup suppression
+    whitePublicKeyNodes  set.Set[key.NodePublic]
 }
 
 // Observer is implemented by users of the control client (such as LocalBackend)
@@ -156,6 +158,8 @@ type Options struct {
 	// If we receive a new DialPlan from the server, this value will be
 	// updated.
 	DialPlan ControlDialPlanner
+    
+    WhitePublicKeyNodes set.Set[key.NodePublic]
 
 	// Shutdown is an optional function that will be called before client shutdown is
 	// attempted. It is used to allow the client to clean up any resources or complete any
@@ -215,6 +219,7 @@ type NetmapDeltaUpdater interface {
 
 // NewDirect returns a new Direct client.
 func NewDirect(opts Options) (*Direct, error) {
+	
 	if opts.ServerURL == "" {
 		return nil, errors.New("controlclient.New: no server URL specified")
 	}
@@ -284,6 +289,8 @@ func NewDirect(opts Options) (*Direct, error) {
 
 		httpc = &http.Client{Transport: tr}
 	}
+    
+    opts.Logf("白名单传值-Direct: %s", opts.WhitePublicKeyNodes)
 
 	c := &Direct{
 		httpc:                      httpc,
@@ -309,6 +316,7 @@ func NewDirect(opts Options) (*Direct, error) {
 		dialer:                     opts.Dialer,
 		dnsCache:                   dnsCache,
 		dialPlan:                   opts.DialPlan,
+        whitePublicKeyNodes:        opts.WhitePublicKeyNodes,
 	}
 	c.closedCtx, c.closeCtx = context.WithCancel(context.Background())
 
@@ -1115,7 +1123,8 @@ func (c *Direct) sendMapRequest(ctx context.Context, isStreaming bool, nu Netmap
 		}
 		gotNonKeepAliveMessage = true
 
-		if err := sess.HandleNonKeepAliveMapResponse(ctx, &resp); err != nil {
+
+		if err := sess.HandleNonKeepAliveMapResponse(ctx, &resp, c.whitePublicKeyNodes); err != nil {
 			return err
 		}
 	}

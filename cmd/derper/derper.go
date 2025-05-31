@@ -61,6 +61,7 @@ var (
 	httpPort    = flag.Int("http-port", 80, "The port on which to serve HTTP. Set to -1 to disable. The listener is bound to the same IP (if any) as specified in the -a flag.")
 	stunPort    = flag.Int("stun-port", 3478, "The UDP port on which to serve STUN. The listener is bound to the same IP (if any) as specified in the -a flag.")
 	configPath  = flag.String("c", "", "config file path")
+    customConfigPath  = flag.String("custom-config-path", "/app/derpCustonConfig/derpCustonConfig.json", "custom config file path")
 	certMode    = flag.String("certmode", "letsencrypt", "mode for getting a cert. possible options: manual, letsencrypt")
 	certDir     = flag.String("certdir", tsweb.DefaultCertDir("derper-certs"), "directory to store LetsEncrypt certs, if addr's port is :443")
 	hostname    = flag.String("hostname", "derp.tailscale.com", "LetsEncrypt host name, if addr's port is :443. When --certmode=manual, this can be an IP address to avoid SNI checks")
@@ -78,7 +79,7 @@ var (
 
 	verifyClients   = flag.Bool("verify-clients", false, "verify clients to this DERP server through a local tailscaled instance.")
 	verifyClientURL = flag.String("verify-client-url", "", "if non-empty, an admission controller URL for permitting client connections; see tailcfg.DERPAdmitClientRequest")
-	verifyFailOpen  = flag.Bool("verify-client-url-fail-open", true, "whether we fail open if --verify-client-url is unreachable")
+	verifyFailOpen  = flag.Bool("verify-client-url-fail-open", false, "whether we fail open if --verify-client-url is unreachable")
 
 	socket = flag.String("socket", "", "optional alternate path to tailscaled socket (only relevant when using --verify-clients)")
 
@@ -113,6 +114,11 @@ type config struct {
 	PrivateKey key.NodePrivate
 }
 
+type customConfig struct {
+    PublicKeys []key.NodePublic     `json:"PublicKey"`
+    IsEnableWhiteListClient bool    `json:"IsEnableWhiteListClient"`
+}
+
 func loadConfig() config {
 	if *dev {
 		return config{PrivateKey: key.NewNode()}
@@ -139,6 +145,36 @@ func loadConfig() config {
 		}
 		return cfg
 	}
+}
+
+func loadCustomConfig() customConfig {
+    b, err := os.ReadFile(*customConfigPath)
+    switch {
+    case errors.Is(err, os.ErrNotExist):
+        // 文件不存在，返回空数组，不报错
+        log.Printf("loadCustomConfig: no path %s\n", *customConfigPath)
+        return customConfig{
+            PublicKeys:             []key.NodePublic{},
+            IsEnableWhiteListClient: false,
+        }
+
+    case err != nil:
+        log.Fatal(err)
+        log.Printf("loadCustomConfig: error %s\n", *customConfigPath)
+        panic("unreachable")
+
+    default:
+        var customCFG customConfig
+        
+        if err := json.Unmarshal(b, &customCFG); err != nil {
+            log.Printf("loadCustomConfig: error %s\n", *customConfigPath)
+            log.Fatalf("loadCustomConfig: error %v", err)
+        }
+        
+        log.Printf("loadCustomConfig: suc %s\n", customCFG)
+        
+        return customCFG
+    }
 }
 
 func writeNewConfig() config {
@@ -194,6 +230,7 @@ func main() {
 	}
 
 	cfg := loadConfig()
+    customCFG := loadCustomConfig()
 
 	serveTLS := tsweb.IsProd443(*addr) || *certMode == "manual"
 
@@ -201,6 +238,12 @@ func main() {
 	s.SetVerifyClient(*verifyClients)
 	s.SetTailscaledSocketPath(*socket)
 	s.SetVerifyClientURL(*verifyClientURL)
+    
+    log.Printf("customCFG.IsEnableWhiteListClient: %v\n", customCFG.IsEnableWhiteListClient)
+    log.Printf("customCFG.PublicKeys: %s\n", customCFG.PublicKeys)
+    s.SetWhiteListClients(customCFG.PublicKeys)
+    s.SetIsEnableWhiteListClient(customCFG.IsEnableWhiteListClient)
+    
 	s.SetVerifyClientURLFailOpen(*verifyFailOpen)
 	s.SetTCPWriteTimeout(*tcpWriteTimeout)
 
@@ -258,10 +301,10 @@ func main() {
 	}
 	expvar.Publish("derp", s.ExpVar())
 
-	handleHome, ok := getHomeHandler(*flagHome)
-	if !ok {
-		log.Fatalf("unknown --home value %q", *flagHome)
-	}
+	// handleHome, ok := getHomeHandler(*flagHome)
+    // if !ok {
+    // 		log.Fatalf("unknown --home value %q", *flagHome)
+    // }
 
 	mux := http.NewServeMux()
 	if *runDERP {
@@ -283,7 +326,8 @@ func main() {
 	mux.HandleFunc("/bootstrap-dns", tsweb.BrowserHeaderHandlerFunc(handleBootstrapDNS))
 	mux.Handle("/", http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		tsweb.AddBrowserHeaders(w)
-		handleHome.ServeHTTP(w, r)
+        io.WriteString(w, "User-agent: *\nDisallow: /\n")
+		// handleHome.ServeHTTP(w, r)
 	}))
 	mux.Handle("/robots.txt", http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		tsweb.AddBrowserHeaders(w)
@@ -585,7 +629,7 @@ func getHomeHandler(val string) (_ http.Handler, ok bool) {
 			w.Header().Set("Content-Type", "text/html; charset=utf-8")
 			w.WriteHeader(200)
 			err := homePageTemplate.Execute(w, templateData{
-				ShowAbuseInfo: validProdHostname.MatchString(*hostname),
+                // ShowAbuseInfo: validProdHostname.MatchString(*hostname),
 				Disabled:      !*runDERP,
 				AllowDebug:    tsweb.AllowDebugAccess(r),
 			})

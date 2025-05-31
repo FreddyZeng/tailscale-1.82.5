@@ -179,6 +179,9 @@ type Server struct {
 
 	verifyClientsURL         string
 	verifyClientsURLFailOpen bool
+    whiteListClients         []key.NodePublic
+    isEnableWhiteListClient bool
+    
 
 	mu       sync.Mutex
 	closed   bool
@@ -484,6 +487,14 @@ func (s *Server) SetVerifyClientURL(v string) {
 // admission controller URL is unreachable.
 func (s *Server) SetVerifyClientURLFailOpen(v bool) {
 	s.verifyClientsURLFailOpen = v
+}
+
+func (s *Server) SetWhiteListClients(v []key.NodePublic) {
+    s.whiteListClients = v
+}
+
+func (s *Server) SetIsEnableWhiteListClient(v bool) {
+    s.isEnableWhiteListClient = v
 }
 
 // SetTailscaledSocketPath sets the unix socket path to use to talk to
@@ -899,7 +910,6 @@ func (s *Server) accept(ctx context.Context, nc Conn, brw *bufio.ReadWriter, rem
 	if err != nil {
 		return fmt.Errorf("receive client key: %v", err)
 	}
-
 	remoteIPPort, _ := netip.ParseAddrPort(remoteAddr)
 	if err := s.verifyClient(ctx, clientKey, clientInfo, remoteIPPort.Addr()); err != nil {
 		return fmt.Errorf("client %v rejected: %v", clientKey, err)
@@ -1340,6 +1350,20 @@ func (s *Server) isMeshPeer(info *clientInfo) bool {
 // verifyClient checks whether the client is allowed to connect to the derper,
 // depending on how & whether the server's been configured to verify.
 func (s *Server) verifyClient(ctx context.Context, clientKey key.NodePublic, info *clientInfo, clientIP netip.Addr) error {
+    
+    if s.isEnableWhiteListClient {
+        allowed := false
+        for _, item := range s.whiteListClients {
+            if item == clientKey {
+                allowed = true
+                break
+            }
+        }
+        if !allowed {
+            return fmt.Errorf("admission controller: %v/%v not allowed", clientKey, clientIP)
+        }
+    }
+    
 	if s.isMeshPeer(info) {
 		// Trusted mesh peer. No need to verify further. In fact, verifying
 		// further wouldn't work: it's not part of the tailnet so tailscaled and
