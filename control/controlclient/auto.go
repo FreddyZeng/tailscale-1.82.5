@@ -152,7 +152,9 @@ type Auto struct {
 }
 
 // New creates and starts a new Auto.
+// 真实入口的初始化
 func New(opts Options) (*Auto, error) {
+    opts.Logf("白名单 New: %s", opts.WhitePublicKeyNodes)
 	c, err := NewNoStart(opts)
 	if c != nil {
 		c.Start()
@@ -162,6 +164,9 @@ func New(opts Options) (*Auto, error) {
 
 // NewNoStart creates a new Auto, but without calling Start on it.
 func NewNoStart(opts Options) (_ *Auto, err error) {
+    
+    opts.Logf("白名单 NewNoStart: %s", opts.WhitePublicKeyNodes)
+
 	direct, err := NewDirect(opts)
 	if err != nil {
 		return nil, err

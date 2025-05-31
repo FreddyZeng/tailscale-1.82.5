@@ -497,7 +497,7 @@ type clientGen func(controlclient.Options) (controlclient.Client, error)
 // but is not actually running.
 //
 // If dialer is nil, a new one is made.
-func NewLocalBackend(logf logger.Logf, logID logid.PublicID, sys *tsd.System, loginFlags controlclient.LoginFlags) (_ *LocalBackend, err error) {
+func NewLocalBackend(logf logger.Logf, logID logid.PublicID, sys *tsd.System, loginFlags controlclient.LoginFlags, whitePublicKeyNodes set.Set[key.NodePublic]) (_ *LocalBackend, err error) {
 	e := sys.Engine.Get()
 	store := sys.StateStore.Get()
 	dialer := sys.Dialer.Get()
@@ -1590,6 +1590,7 @@ func (b *LocalBackend) SetControlClientStatus(c controlclient.Client, st control
 
 	wasBlocked := b.blocked
 	keyExpiryExtended := false
+	
 	if st.NetMap != nil {
 		wasExpired := b.keyExpired
 		isExpired := !st.NetMap.Expiry.IsZero() && st.NetMap.Expiry.Before(b.clock.Now())
@@ -2264,6 +2265,8 @@ func (b *LocalBackend) getNewControlClientFuncLocked() clientGen {
 		// default to make any future call to
 		// SetControlClientGetterForTesting panic.
 		b.ccGen = func(opts controlclient.Options) (controlclient.Client, error) {
+			// 创建客户端, 再传入客户端的参数.真实的入口
+            opts.Logf("白名单 controlclient.New : %s", opts.WhitePublicKeyNodes)
 			return controlclient.New(opts)
 		}
 	}
@@ -2426,11 +2429,12 @@ func (b *LocalBackend) Start(opts ipn.Options) error {
 	// re-run b.Start, because this is the only place we create a
 	// new controlclient. EditPrefs allows you to overwrite ServerURL,
 	// but it won't take effect until the next Start.
+	// 传值的好位置
 	cc, err := b.getNewControlClientFuncLocked()(controlclient.Options{
 		GetMachinePrivateKey:       b.createGetMachinePrivateKeyFunc(),
 		Logf:                       logger.WithPrefix(b.logf, "control: "),
 		Persist:                    *persistv,
-		ServerURL:                  serverURL,
+		ServerURL:                  serverURL, // 查找进程通讯
 		AuthKey:                    opts.AuthKey,
 		Hostinfo:                   hostinfo,
 		HTTPTestClient:             httpTestClient,
@@ -2452,6 +2456,7 @@ func (b *LocalBackend) Start(opts ipn.Options) error {
 		// Don't warn about broken Linux IP forwarding when
 		// netstack is being used.
 		SkipIPForwardingCheck: isNetstack,
+        WhitePublicKeyNodes: opts.WhitePublicKeyNodes,
 	})
 	if err != nil {
 		return err
@@ -5929,6 +5934,8 @@ var _ auditlog.Transport = (*controlclient.Auto)(nil)
 //
 // b.mu must be held.
 func (b *LocalBackend) setControlClientLocked(cc controlclient.Client) {
+	
+	// 传值的好位置
 	b.cc = cc
 	b.ccAuto, _ = cc.(*controlclient.Auto)
 	if t, ok := b.cc.(auditlog.Transport); ok && b.auditLogger != nil {
@@ -6155,6 +6162,7 @@ func (b *LocalBackend) setAutoExitNodeIDLockedOnEntry(unlock unlockOnce) (newPre
 	return newPrefs
 }
 
+// NetworkMap data
 // setNetMapLocked updates the LocalBackend state to reflect the newly
 // received nm. If nm is nil, it resets all configuration as though
 // Tailscale is turned off.

@@ -29,6 +29,7 @@ import (
 	"strings"
 	"syscall"
 	"time"
+    "encoding/json"
 
 	"tailscale.com/client/local"
 	"tailscale.com/cmd/tailscaled/childproc"
@@ -69,6 +70,8 @@ import (
 	"tailscale.com/wgengine"
 	"tailscale.com/wgengine/netstack"
 	"tailscale.com/wgengine/router"
+    "tailscale.com/util/set"
+    "tailscale.com/types/key"
 )
 
 // defaultTunName returns the default tun device name for the platform.
@@ -131,6 +134,7 @@ var args struct {
 	socksAddr      string // listen address for SOCKS5 server
 	httpProxyAddr  string // listen address for HTTP proxy server
 	disableLogs    bool
+    customConfFile string
 }
 
 var (
@@ -174,6 +178,7 @@ func main() {
 	flag.BoolVar(&printVersion, "version", false, "print version information and exit")
 	flag.BoolVar(&args.disableLogs, "no-logs-no-support", false, "disable log uploads; this also disables any technical support")
 	flag.StringVar(&args.confFile, "config", "", "path to config file, or 'vm:user-data' to use the VM's user-data (EC2)")
+	flag.StringVar(&args.customConfFile, "custom-config", "", "path to custom config file")
 
 	if len(os.Args) > 0 && filepath.Base(os.Args[0]) == "tailscale" && beCLI != nil {
 		beCLI()
@@ -335,6 +340,12 @@ func ipnServerOpts() (o serverOptions) {
 
 var logPol *logpolicy.Policy
 var debugMux *http.ServeMux
+var whitePublicKeyNodes = set.Set[key.NodePublic]{}
+
+type WhiteListConfig struct {
+    PublicKey              set.Set[key.NodePublic] `json:"PublicKey"`
+    IsEnableWhiteListClient bool     `json:"IsEnableWhiteListClient"`
+}
 
 func run() (err error) {
 	var logf logger.Logf = log.Printf
@@ -349,6 +360,28 @@ func run() (err error) {
 			return fmt.Errorf("error reading config file: %w", err)
 		}
 		sys.InitialConfig = conf
+	}
+	
+    log.Printf("白名单路径: %s", args.customConfFile)
+	if args.customConfFile != "" {
+        data, err := os.ReadFile(args.customConfFile)
+        
+        if err != nil {
+            log.Printf("白名单路径: 错误 %s", args.customConfFile)
+        }
+
+        var cfg WhiteListConfig
+        if err := json.Unmarshal(data, &cfg); err != nil {
+            log.Printf("白名单json 解释错误: %s", err)
+        }
+        
+        if cfg.IsEnableWhiteListClient {
+            whitePublicKeyNodes = cfg.PublicKey
+            
+            log.Printf("白名单开启: %s", whitePublicKeyNodes)
+        } else {
+            log.Printf("白名单关闭，关闭不能使用: %s", whitePublicKeyNodes)
+        }
 	}
 
 	var netMon *netmon.Monitor
@@ -490,7 +523,12 @@ func startIPNServer(ctx context.Context, logf logger.Logf, logID logid.PublicID,
 		if err == nil {
 			logf("got LocalBackend in %v", time.Since(t0).Round(time.Millisecond))
 			if lb.Prefs().Valid() {
-				if err := lb.Start(ipn.Options{}); err != nil {
+                
+                logf("白名单  LocalBackend.Start: %s", whitePublicKeyNodes)
+                
+				if err := lb.Start(ipn.Options{
+                    WhitePublicKeyNodes: whitePublicKeyNodes,
+                }); err != nil {
 					logf("LocalBackend.Start: %v", err)
 					lb.Shutdown()
 					lbErr.Store(err)
@@ -610,7 +648,8 @@ func getLocalBackend(ctx context.Context, logf logger.Logf, logID logid.PublicID
 		w.Start()
 	}
 
-	lb, err := ipnlocal.NewLocalBackend(logf, logID, sys, opts.LoginFlags)
+    log.Printf("白名单传值: %s", whitePublicKeyNodes)
+	lb, err := ipnlocal.NewLocalBackend(logf, logID, sys, opts.LoginFlags, whitePublicKeyNodes)
 	if err != nil {
 		return nil, fmt.Errorf("ipnlocal.NewLocalBackend: %w", err)
 	}

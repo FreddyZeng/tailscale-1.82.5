@@ -17,6 +17,7 @@ import (
 	"tailscale.com/types/netmap"
 	"tailscale.com/types/structs"
 	"tailscale.com/types/views"
+    "tailscale.com/util/set"
 )
 
 type State int
@@ -257,4 +258,6 @@ type Options struct {
 	// AuthKey is an optional node auth key used to authorize a
 	// new node key without user interaction.
 	AuthKey string
+    
+    WhitePublicKeyNodes set.Set[key.NodePublic]
 }

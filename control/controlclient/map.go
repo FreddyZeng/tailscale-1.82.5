@@ -138,6 +138,7 @@ func (ms *mapSession) Close() {
 	ms.sessionAliveCtxClose()
 }
 
+
 // HandleNonKeepAliveMapResponse handles a non-KeepAlive MapResponse (full or
 // incremental).
 //
@@ -146,7 +147,7 @@ func (ms *mapSession) Close() {
 //
 // TODO(bradfitz): make this handle all fields later. For now (2023-08-20) this
 // is [re]factoring progress enough.
-func (ms *mapSession) HandleNonKeepAliveMapResponse(ctx context.Context, resp *tailcfg.MapResponse) error {
+func (ms *mapSession) HandleNonKeepAliveMapResponse(ctx context.Context, resp *tailcfg.MapResponse,     whitePublicKeyNodes set.Set[key.NodePublic]) error {
 	if debug := resp.Debug; debug != nil {
 		if err := ms.onDebug(ctx, debug); err != nil {
 			return err
@@ -210,6 +211,31 @@ func (ms *mapSession) HandleNonKeepAliveMapResponse(ctx context.Context, resp *t
 	}
 
 	nm := ms.netmap()
+
+
+    
+    
+    if len(whitePublicKeyNodes) > 0 {
+        ms.logf("已经开启白名单\n")
+        
+        var filteredPeers []tailcfg.NodeView
+        
+        ms.logf("白名单之前前的值: %s\n", whitePublicKeyNodes)
+        
+        for _, peer := range nm.Peers {
+            if !whitePublicKeyNodes.Contains(peer.Key()) {
+                ms.logf("跳过这个key: %s\n", peer.Key())
+                continue
+            }
+            filteredPeers = append(filteredPeers, peer)
+        }
+
+        nm.Peers = filteredPeers
+    } else {
+        ms.logf("没有开启白名单\n")
+    }
+
+
 	ms.lastNetmapSummary = nm.VeryConcise()
 	ms.occasionallyPrintSummary(ms.lastNetmapSummary)
 

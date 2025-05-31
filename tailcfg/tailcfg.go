@@ -311,6 +311,7 @@ func MarshalCapJSON[T any](capRule T) (RawMessage, error) {
 	return RawMessage(string(bs)), nil
 }
 
+// peer
 // Node is a Tailscale device in a tailnet.
 type Node struct {
 	ID       NodeID

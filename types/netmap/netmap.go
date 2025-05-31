@@ -21,6 +21,7 @@ import (
 	"tailscale.com/wgengine/filter/filtertype"
 )
 
+// NetworkMap data
 // NetworkMap is the current state of the world.
 //
 // The fields should all be considered read-only. They might

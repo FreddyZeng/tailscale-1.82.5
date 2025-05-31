@@ -135,6 +135,10 @@ type DERPRegion struct {
 	// things are healthy), the inter-cluster routing is minimal
 	// to zero.
 	Nodes []*DERPNode
+    
+    IsCustomDERPRegion bool `json:",omitempty"`
+    
+    IsConfigTailScaleDERPNodeAllSTUNOnly bool `json:",omitempty"`
 }
 
 // DERPNode describes a DERP packet relay node running within a DERPRegion.
@@ -207,6 +211,9 @@ type DERPNode struct {
 	// CanPort80 specifies whether this DERP node is accessible over HTTP
 	// on port 80 specifically. This is used for captive portal checks.
 	CanPort80 bool `json:",omitempty"`
+    
+    
+    IsCustomDERPNode bool `json:",omitempty"`
 }
 
 func (n *DERPNode) IsTestNode() bool {

@@ -88,19 +88,25 @@ func (s *STUNServer) Serve() error {
 		}
 		pkt := buf[:n]
 		if !stun.Is(pkt) {
+            // ✅ 第一个处理：是否是 STUN 报文
 			stunNotSTUN.Add(1)
 			continue
 		}
 		txid, err := stun.ParseBindingRequest(pkt)
 		if err != nil {
+            // ✅ 第二个处理：是否是合法 STUN Binding Request
 			stunNotSTUN.Add(1)
 			continue
 		}
+        
+        // ✅ 第三个处理：记录地址族
 		if ua.IP.To4() != nil {
 			stunIPv4.Add(1)
 		} else {
 			stunIPv6.Add(1)
 		}
+        
+        // ✅ 第四个处理：构造 STUN 响应并写回客户端
 		addr, _ := netip.AddrFromSlice(ua.IP)
 		res := stun.Response(txid, netip.AddrPortFrom(addr, uint16(ua.Port)))
 		_, err = s.pc.WriteTo(res, ua)
